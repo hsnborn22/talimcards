@@ -1,0 +1,8 @@
+begat',Nothing
+govorit',Nothing
+hranit',Nothing
+menyat',Nothing
+meshat',Nothing
+novy,Nothing
+zashishat',Nothing
+znat',Nothing

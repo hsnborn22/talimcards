@@ -1,0 +1,8 @@
+begat',0
+govorit',0
+hranit',0
+menyat',0
+meshat',0
+novy,0
+zashishat',0
+znat',0
