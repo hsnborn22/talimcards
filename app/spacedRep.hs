@@ -3,6 +3,8 @@
 module Main where
 
 import Lens.Micro ((^.))
+import Data.Maybe (listToMaybe)
+import Data.List (sort,foldl')
 import Lens.Micro.TH (makeLenses)
 import Lens.Micro.Mtl
 import Control.Monad (void)
@@ -23,6 +25,29 @@ import qualified Brick.Widgets.Border as B
 import Brick.Widgets.Core
 import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
+import System.Random (randomRIO)
+
+-- Define the Queue type
+newtype Queue a = Queue (Seq.Seq a)
+
+-- Create an empty queue
+emptyQueue :: Queue a
+emptyQueue = Queue Seq.empty
+
+-- Enqueue an element
+enqueue :: a -> Queue a -> Queue a
+enqueue x (Queue seq) = Queue (seq Seq.|> x)
+
+-- Dequeue an element
+dequeue :: Queue a -> Maybe (a, Queue a)
+dequeue (Queue seq) =
+    case Seq.viewl seq of
+        Seq.EmptyL -> Nothing
+        x Seq.:< xs -> Just (x, Queue xs)
+
+-- Function to remove a particular value from the queue
+removeValue :: Eq a => a -> Queue a -> Queue a
+removeValue val (Queue seq) = Queue $ Seq.filter (/= val) seq
 
 data Name = Info | Button1 | Button2 | Button3 | Button4 | Prose | TextBox
           deriving (Show, Ord, Eq)
@@ -36,9 +61,16 @@ data St =
        , _meanings :: Map.Map String String
        , _knowledge :: Map.Map String Int 
        , _buttonTrue :: [Int]
+       , _wordsQueue :: Queue String
+       -- this map stores 0 for each key if the key was not introduced yet to the user, and 1 if it was
+       -- introduced
+       , _introducedMap :: Map.Map String Int
+       -- this map stores how many each item was reviewed by the user during a session
+       , _levelMapTemp :: Map.Map String Int
+       , _buttonPressed :: Int
        }
 
-data Screen = Presentation | MultiChoice | TextInput | Feedback
+data Screen = Presentation | MultiChoice | TextInput | Feedback deriving (Show, Eq)
 
 makeLenses ''St
 
@@ -57,26 +89,32 @@ attrFunction a
     | otherwise = attrName "button"
 
 buttonLayer :: St -> Widget Name
-buttonLayer st =
-    C.vCenterLayer $
-      C.hCenterLayer (padBottom (Pad 1) $ str "Click a button:") <=>
-      C.hCenterLayer (hBox $ padLeftRight 1 <$> buttons) <=>
-      C.hCenterLayer (padTopBottom 1 $ str "Or enter text and then click in this editor:")
+buttonLayer st 
+    | (st ^. currentScreen == MultiChoice || st ^. currentScreen == Feedback) = C.vCenterLayer $
+          C.hCenterLayer (padBottom (Pad 1) $ str "Click a button:") <=>
+          C.hCenterLayer (hBox $ padLeftRight 1 <$> buttons) <=>
+          C.hCenterLayer (padTopBottom 1 $ str "Or enter text and then click in this editor:")
+    | otherwise = C.vCenterLayer $ C.hCenterLayer (padBottom (Pad 1) $ str mnVal ) 
     where
-        buttons = mkButton <$> buttonData
-        buttonData = [ (Button1, (st^.currentChoices) !! 0, attrFunction ((st^. buttonTrue) !! 0))
-                     , (Button2, (st^.currentChoices) !! 1, attrFunction ((st^. buttonTrue) !! 1))
-                     , (Button3,  (st^.currentChoices) !! 2, attrFunction ((st^. buttonTrue) !! 2))
-                     , (Button4,  (st^.currentChoices) !! 3, attrFunction ((st^. buttonTrue) !! 3))
-                     ]
-        mkButton (name, label, attr) =
-            let wasClicked = (fst <$> st^.lastReportedClick) == Just name
-            in clickable name $
-               withDefAttr attr $
-               B.border $
-               padTopBottom 1 $
-               padLeftRight (if wasClicked then 2 else 3) $
-               str (if wasClicked then "<" <> label <> ">" else label)
+          buttons = mkButton <$> buttonData
+          buttonData = [ (Button1, (st^.currentChoices) !! 0, attrFunction ((st^. buttonTrue) !! 0))
+                      , (Button2, (st^.currentChoices) !! 1, attrFunction ((st^. buttonTrue) !! 1))
+                      , (Button3,  (st^.currentChoices) !! 2, attrFunction ((st^. buttonTrue) !! 2))
+                      , (Button4,  (st^.currentChoices) !! 3, attrFunction ((st^. buttonTrue) !! 3))
+                      ]
+          mnVal = case Map.lookup (st ^. prose) (st ^. meanings) of
+              Just value -> value 
+              Nothing -> ""
+          mkButton (name, label, attr) =
+              let wasClicked = (fst <$> st^.lastReportedClick) == Just name
+              in clickable name $
+                   withDefAttr attr $
+                   B.border $
+                   padTopBottom 1 $
+                   padLeftRight (if wasClicked then 2 else 3) $
+                   str (if wasClicked then "<" <> label <> ">" else label)
+
+
 
 proseLayer :: St -> Widget Name
 proseLayer st =
@@ -118,11 +156,39 @@ appEvent ev@(T.MouseDown n _ _ loc) = do
             if currStr == strToComp then do 
                 currentScreen .= Feedback
                 buttonTrue .= [1,0,0,0]
+                buttonPressed .= 0
             else do
                 currentScreen .= Feedback
                 buttonTrue .= [2,0,0,0]
-
+        Button2 -> do
+            let currStr = choices !! 1
+            if currStr == strToComp then do 
+                currentScreen .= Feedback
+                buttonTrue .= [0,1,0,0]
+                buttonPressed .= 1
+            else do
+                currentScreen .= Feedback
+                buttonTrue .= [0,2,0,0]
+        Button3 -> do 
+            let currStr = choices !! 2
+            if currStr == strToComp then do 
+                currentScreen .= Feedback
+                buttonTrue .= [0,0,1,0]
+                buttonPressed .= 2
+            else do
+                currentScreen .= Feedback
+                buttonTrue .= [0,0,2,0]
+        Button4 -> do
+            let currStr = choices !! 3
+            if currStr == strToComp then do 
+                currentScreen .= Feedback
+                buttonTrue .= [0,0,0,1]
+                buttonPressed .= 3
+            else do
+                currentScreen .= Feedback
+                buttonTrue .= [0,0,0,3]
         _ -> return ()
+
 appEvent (T.MouseUp {}) =
     lastReportedClick .= Nothing
 appEvent (T.VtyEvent (V.EvMouseUp {})) =
@@ -133,8 +199,109 @@ appEvent (T.VtyEvent (V.EvKey V.KDown [V.MCtrl])) =
     M.vScrollBy (M.viewportScroll Prose) 1
 appEvent (T.VtyEvent (V.EvKey V.KEsc [])) =
     M.halt
+appEvent (T.VtyEvent (V.EvKey V.KEnter [])) = do
+    screenInfo <- use currentScreen
+    case screenInfo of 
+        Presentation -> do
+            -- after pressing enter of a presentation of a word, we queue the word and set the word status
+            -- to presented (1)
+            pross <- use prose
+            intrMap <- use introducedMap
+            wrdQueu <- use wordsQueue
+            lvlMap <- use levelMapTemp
+            introducedMap .= Map.adjust (+1) pross intrMap
+            intrMap2 <- use introducedMap
+            currentScreen .= selectNextScreen lvlMap intrMap2
+            screen2 <- use currentScreen
+            wrdQueu2 <- use wordsQueue
+            prose .= selectNextWord wrdQueu2 lvlMap intrMap2 screen2 
+            pross2 <- use prose
+            wordsQueue .= removeValue pross2 wrdQueu2
+            wrdQueu3 <- use wordsQueue
+            wordsQueue .= enqueue pross2 wrdQueu3
+        Feedback -> do 
+             
+            pross <- use prose
+            intrMap <- use introducedMap
+            wrdQueu <- use wordsQueue
+            lvlMap <- use levelMapTemp 
+            
+            buttonTr <- use buttonTrue
+            buttonPrs <- use buttonPressed
+            
+            if ((buttonTr !! buttonPrs) == 1) then 
+                levelMapTemp .= Map.adjust (+1) pross lvlMap
+            else
+                levelMapTemp .= lvlMap
+            lvlMap2 <- use levelMapTemp
+            
+            currentScreen .= selectNextScreen lvlMap2 intrMap
+            screen2 <- use currentScreen
+            prose .= selectNextWord wrdQueu lvlMap2 intrMap screen2
+            pross2 <- use prose
+            wordsQueue .= enqueue pross2 (removeValue pross2 wrdQueu)
+            buttonTrue .= [0,0,0,0]
+            buttonPressed .= 0
+
+            if (hasValuesEqualTo lvlMap2 [4,4,4,4,4]) then
+                M.halt
+            else
+                return ()
+            
+        _ -> return ()
 appEvent ev =
-    return ()
+  return ()
+  
+-- Function to shuffle an array
+shuffle :: [a] -> IO [a]
+shuffle xs = do
+    let n = length xs
+    indices <- mapM (const $ randomRIO (0, n-1)) xs
+    return $ foldl' (\acc i -> acc ++ [xs !! i]) [] indices
+
+isEmpty :: Queue a -> Bool
+isEmpty (Queue seq) = Seq.null seq
+
+-- Function to check if the values of the map match an array
+hasValuesEqualTo :: (Ord a, Eq a, Num a) => Map.Map k a -> [a] -> Bool
+hasValuesEqualTo m l = Map.elems m == l
+
+-- Function to find the first key with a value of 0
+findFirstKeyWithZero :: Ord k => Map.Map k Int -> k
+findFirstKeyWithZero m = head [k | (k, v) <- Map.toList m, v == 0]
+
+-- Function to find and remove the first key with value inp
+findAdequateKey :: Queue String -> Map.Map String Int -> Int -> Maybe String
+findAdequateKey q m1 inp
+    | isEmpty q = Nothing  -- Return Nothing if the queue is empty
+    | otherwise = 
+        let mm = dequeue q  -- Dequeue the first element
+        in case mm of
+            Nothing -> Nothing  -- No key found, return Nothing
+            Just (key, newQ) -> 
+                if Map.lookup key m1 < Just inp  -- Check if the value is less than inp
+                then Just key  -- Return the key if value is inp
+                else findAdequateKey newQ m1 inp  -- Recur with the new queue
+
+selectNextScreen :: Map.Map String Int -> Map.Map String Int -> Screen 
+selectNextScreen m1 m2 
+        | (hasValuesEqualTo m1 [0,0,0,0,0] && hasValuesEqualTo m2 [1,0,0,0,0]) = Presentation
+        | (hasValuesEqualTo m1 [1,1,0,0,0] && hasValuesEqualTo m2 [1,1,0,0,0]) = Presentation
+        | (hasValuesEqualTo m1 [2,2,2,0,0] && hasValuesEqualTo m2 [1,1,1,0,0]) = Presentation
+        | (hasValuesEqualTo m1 [3,3,3,3,0] && hasValuesEqualTo m2 [1,1,1,1,0]) = Presentation
+        | otherwise = MultiChoice
+
+selectNextWord :: Queue String -> Map.Map String Int -> Map.Map String Int -> Screen -> String
+selectNextWord q m1 m2 s 
+        | (s == Presentation) = valueSer
+        | otherwise = forValue2
+        where 
+            forValue = findAdequateKey q m1 (commonLevel - 1)
+            forValue2 = case forValue of 
+                Just v -> v
+                Nothing -> ""
+            commonLevel = Map.foldr (\v acc -> if v == 1 then acc + 1 else acc) 0 m2
+            valueSer = findFirstKeyWithZero m2
 
 aMap :: AttrMap
 aMap = attrMap V.defAttr
@@ -158,6 +325,8 @@ app =
 
 main :: IO ()
 main = do
-    let myMap = Map.fromList [("Parola da Imparare", "Scelta 2"), ("Parola da imp2", "Scelta 2")]
-    let myMap2 = Map.fromList [("Parola da Imparare", 0), ("Parola da imp2", 0)]
-    void $ M.defaultMain app $ St [] Nothing "Parola da Imparare" MultiChoice ["Scelta 1", "Scelta 2", "Scelta 3", "Scelta 4"] myMap myMap2 [0,0,0,0] 
+    let myMap = Map.fromList [("Parola da Imparare", "Scelta 1"), ("Parola da imp2", "Scelta 2"), ("Parola da imp3", "Scelta 3"), ("Parola da imp4", "Scelta 4"), ("Parola da imp5", "Scelta 1")]
+    let myMap2 = Map.fromList [("Parola da Imparare", 0), ("Parola da imp2", 0),  ("Parola da imp3", 0), ("Parola da imp4", 0 ), ("Parola da imp5", 0)]
+    let myMap3 = Map.fromList [("Parola da Imparare", 0), ("Parola da imp2", 0),  ("Parola da imp3", 0), ("Parola da imp4", 0 ), ("Parola da imp5", 0)]
+    let myMap4 = Map.fromList [("Parola da Imparare", 0), ("Parola da imp2", 0),  ("Parola da imp3", 0), ("Parola da imp4", 0 ), ("Parola da imp5", 0)]
+    void $ M.defaultMain app $ St [] Nothing "Parola da Imparare" Presentation ["Scelta 1", "Scelta 2", "Scelta 3", "Scelta 4"] myMap myMap2 [0,0,0,0] (enqueue "Parola da Imparare" emptyQueue) myMap3 myMap4 0 
