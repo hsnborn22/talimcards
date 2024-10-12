@@ -26,6 +26,10 @@ import Brick.Widgets.Core
 import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 import System.Random (randomRIO)
+import RandomUtils (shuffle)
+
+removeElement :: Eq a => a -> [a] -> [a]
+removeElement x xs = [y | y <- xs, y /= x]
 
 -- Define the Queue type
 newtype Queue a = Queue (Seq.Seq a)
@@ -69,6 +73,7 @@ data St =
        , _levelMapTemp :: Map.Map String Int
        , _buttonPressed :: Int
        , _learnCompletion :: Int
+       , _possibleChoices :: [String]
        }
 
 data Screen = Presentation | MultiChoice | TextInput | Feedback deriving (Show, Eq)
@@ -233,6 +238,16 @@ appEvent (T.VtyEvent (V.EvKey V.KEnter [])) = do
             wordsQueue .= removeValue pross2 wrdQueu2
             wrdQueu3 <- use wordsQueue
             wordsQueue .= enqueue pross2 wrdQueu3
+            -- shuffle the possible choices
+            possibleChoic <- use possibleChoices
+            myMap <- use meanings 
+            let currentValue = case Map.lookup pross2 myMap of
+                                      Just value -> value
+                                      Nothing -> ""
+
+            temp1 <- liftIO $ shuffle $ removeElement currentValue possibleChoic
+            temp2 <- liftIO $ shuffle $ currentValue : (take 3 temp1) 
+            currentChoices .= temp2 
         Feedback -> do 
              
             pross <- use prose
@@ -262,28 +277,22 @@ appEvent (T.VtyEvent (V.EvKey V.KEnter [])) = do
                 M.halt
             else do
                 return ()
+
+            -- shuffle the possible choices
+            possibleChoic <- use possibleChoices
+            myMap <- use meanings 
+            let currentValue = case Map.lookup pross2 myMap of
+                                      Just value -> value
+                                      Nothing -> ""
+
+            temp1 <- liftIO $ shuffle $ removeElement currentValue possibleChoic
+            temp2 <- liftIO $ shuffle $ currentValue : (take 3 temp1) 
+            currentChoices .= temp2 
             
         _ -> return ()
 appEvent ev =
   return ()
   
--- Function to shuffle an array
-shuffle :: [a] -> IO [a]
-shuffle xs = do
-    let n = length xs
-    indices <- mapM (const $ randomRIO (0, n-1)) xs
-    return $ foldl' (\acc i -> acc ++ [xs !! i]) [] indices
-
--- Function to take n random elements from a list
-takeRandom :: Int -> [a] -> IO [a]
-takeRandom n xs = do
-    let lengthXs = length xs
-    if n > lengthXs
-        then error "Requested more elements than available"
-        else do
-            indices <- nub <$> mapM (const $ randomRIO (0, lengthXs - 1)) [1..n]
-            return [xs !! i | i <- indices]
-
 isEmpty :: Queue a -> Bool
 isEmpty (Queue seq) = Seq.null seq
 
@@ -354,4 +363,4 @@ main = do
     let myMap2 = Map.fromList [("Parola da Imparare", 0), ("Parola da imp2", 0),  ("Parola da imp3", 0), ("Parola da imp4", 0 ), ("Parola da imp5", 0)]
     let myMap3 = Map.fromList [("Parola da Imparare", 0), ("Parola da imp2", 0),  ("Parola da imp3", 0), ("Parola da imp4", 0 ), ("Parola da imp5", 0)]
     let myMap4 = Map.fromList [("Parola da Imparare", 0), ("Parola da imp2", 0),  ("Parola da imp3", 0), ("Parola da imp4", 0 ), ("Parola da imp5", 0)]
-    void $ M.defaultMain app $ St [] Nothing "Parola da Imparare" Presentation ["Scelta 1", "Scelta 2", "Scelta 3", "Scelta 4"] myMap myMap2 [0,0,0,0] (enqueue "Parola da Imparare" emptyQueue) myMap3 myMap4 0 0 
+    void $ M.defaultMain app $ St [] Nothing "Parola da Imparare" Presentation ["Scelta 1", "Scelta 2", "Scelta 3", "Scelta 4"] myMap myMap2 [0,0,0,0] (enqueue "Parola da Imparare" emptyQueue) myMap3 myMap4 0 0 ["Scelta 1", "Scelta 2", "Scelta 3", "Scelta 4", "junk", "more junk", "idk", "HAHA"]  
