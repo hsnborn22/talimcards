@@ -4,7 +4,7 @@ module Main where
 
 import Lens.Micro ((^.))
 import Data.Maybe (listToMaybe)
-import Data.List (sort,foldl')
+import Data.List (sort,foldl', nub)
 import Lens.Micro.TH (makeLenses)
 import Lens.Micro.Mtl
 import Control.Monad (void)
@@ -68,6 +68,7 @@ data St =
        -- this map stores how many each item was reviewed by the user during a session
        , _levelMapTemp :: Map.Map String Int
        , _buttonPressed :: Int
+       , _learnCompletion :: Int
        }
 
 data Screen = Presentation | MultiChoice | TextInput | Feedback deriving (Show, Eq)
@@ -136,10 +137,10 @@ infoLayer st = T.Widget T.Fixed T.Fixed $ do
                     "Mouse down at " <> show name <> " @ " <> show l
     T.render $ translateBy (T.Location (0, h-1)) $ clickable Info $
                withDefAttr (attrName "info") $
-               C.hCenter $ str msg
+              C.hCenter $ str msg
 
-appEvent :: T.BrickEvent Name e -> T.EventM Name St ()
-appEvent ev@(T.MouseDown n _ _ loc) = do
+appEventQuiz :: T.BrickEvent Name e -> T.EventM Name St ()
+appEventQuiz ev@(T.MouseDown n _ _ loc) = do
     lastReportedClick .= Just (n, loc)
     choices <- use currentChoices
     
@@ -186,13 +187,26 @@ appEvent ev@(T.MouseDown n _ _ loc) = do
                 buttonPressed .= 3
             else do
                 currentScreen .= Feedback
-                buttonTrue .= [0,0,0,3]
+                buttonTrue .= [0,0,0,2]
         _ -> return ()
 
-appEvent (T.MouseUp {}) =
-    lastReportedClick .= Nothing
+appEvent :: T.BrickEvent Name e -> T.EventM Name St ()
+appEvent ev@(T.MouseDown n _ _ loc) = do
+    currScr <- use currentScreen
+    if currScr == MultiChoice
+        then appEventQuiz ev
+        else return ()
+
+appEvent (T.MouseUp n _ loc) = do
+    -- Handle the button action on MouseUp event
+    mClick <- use lastReportedClick
+    case mClick of
+        Just (button, _) | button == n -> appEventQuiz (T.MouseDown button V.BLeft [V.MShift] loc)
+        _ -> return ()
+        
 appEvent (T.VtyEvent (V.EvMouseUp {})) =
     lastReportedClick .= Nothing
+
 appEvent (T.VtyEvent (V.EvKey V.KUp [V.MCtrl])) =
     M.vScrollBy (M.viewportScroll Prose) (-1)
 appEvent (T.VtyEvent (V.EvKey V.KDown [V.MCtrl])) =
@@ -243,9 +257,10 @@ appEvent (T.VtyEvent (V.EvKey V.KEnter [])) = do
             buttonTrue .= [0,0,0,0]
             buttonPressed .= 0
 
-            if (hasValuesEqualTo lvlMap2 [4,4,4,4,4]) then
+            if (hasValuesEqualTo lvlMap2 [4,4,4,4,4]) then do
+                learnCompletion .= 1
                 M.halt
-            else
+            else do
                 return ()
             
         _ -> return ()
@@ -258,6 +273,16 @@ shuffle xs = do
     let n = length xs
     indices <- mapM (const $ randomRIO (0, n-1)) xs
     return $ foldl' (\acc i -> acc ++ [xs !! i]) [] indices
+
+-- Function to take n random elements from a list
+takeRandom :: Int -> [a] -> IO [a]
+takeRandom n xs = do
+    let lengthXs = length xs
+    if n > lengthXs
+        then error "Requested more elements than available"
+        else do
+            indices <- nub <$> mapM (const $ randomRIO (0, lengthXs - 1)) [1..n]
+            return [xs !! i | i <- indices]
 
 isEmpty :: Queue a -> Bool
 isEmpty (Queue seq) = Seq.null seq
@@ -329,4 +354,4 @@ main = do
     let myMap2 = Map.fromList [("Parola da Imparare", 0), ("Parola da imp2", 0),  ("Parola da imp3", 0), ("Parola da imp4", 0 ), ("Parola da imp5", 0)]
     let myMap3 = Map.fromList [("Parola da Imparare", 0), ("Parola da imp2", 0),  ("Parola da imp3", 0), ("Parola da imp4", 0 ), ("Parola da imp5", 0)]
     let myMap4 = Map.fromList [("Parola da Imparare", 0), ("Parola da imp2", 0),  ("Parola da imp3", 0), ("Parola da imp4", 0 ), ("Parola da imp5", 0)]
-    void $ M.defaultMain app $ St [] Nothing "Parola da Imparare" Presentation ["Scelta 1", "Scelta 2", "Scelta 3", "Scelta 4"] myMap myMap2 [0,0,0,0] (enqueue "Parola da Imparare" emptyQueue) myMap3 myMap4 0 
+    void $ M.defaultMain app $ St [] Nothing "Parola da Imparare" Presentation ["Scelta 1", "Scelta 2", "Scelta 3", "Scelta 4"] myMap myMap2 [0,0,0,0] (enqueue "Parola da Imparare" emptyQueue) myMap3 myMap4 0 0 
