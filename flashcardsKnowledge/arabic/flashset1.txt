@@ -1,4 +1,3 @@
-begat',0
 govorit',0
 hranit',0
 menyat',0

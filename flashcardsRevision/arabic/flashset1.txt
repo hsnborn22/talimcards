@@ -1,4 +1,3 @@
-begat',Nothing
 govorit',Nothing
 hranit',Nothing
 menyat',Nothing

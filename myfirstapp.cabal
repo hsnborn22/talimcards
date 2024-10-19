@@ -78,7 +78,9 @@ executable myfirstapp
                       split,
                       containers,
                       time,
-                      text-zipper
+                      text-zipper,
+                      random,
+                      array
                       
 
     -- Directories containing source files.

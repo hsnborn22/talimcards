@@ -52,7 +52,11 @@ import Data.Time.Format (defaultTimeLocale)
 import Brick.Util (on, fg)
 import qualified Brick.Types as T
 import qualified Brick.Widgets.Table as Table
+import qualified Data.Sequence as Seq
 import FlashMap (trim, trimQuotes, parseCommaPairs, parseDate, parseDates, writeCommaPairs, localTimeToString, convertDateMapToStrMap, writeDatePairs, parseKnowledgePairs, parseDatePairs, changeKey)
+import SpacedRep (appLearn, St(..), drawUi, aMap, Screen(..), emptyQueue, enqueue, dequeue) 
+import RandomUtils (shuffle)
+
 
 createMap :: (Ord k) => [k] -> Map.Map k Int
 createMap keys = Map.fromList [(key, 0) | key <- keys]
@@ -67,9 +71,11 @@ data Row = Row String String String String
 runApp :: M.App AppState String () -> AppState -> IO ()
 runApp app state = void $ M.defaultMain app state 
 
-data Name = FileBrowser1 | Edit1 | List1
+data Name = FileBrowser1 | Edit1 | List1 | Info | Button1 | Button2 | Button3 | Button4 | Prose | TextBox
           deriving (Eq, Show, Ord)
 
+data ExitState = ExitOpt | Learn1Opt | Learn2Opt | ReviewOpt 
+          deriving (Eq, Show, Ord)
 
 data AppState = AppState {_currentFilePath :: String
     ,_currentFileContent :: String
@@ -80,7 +86,11 @@ data AppState = AppState {_currentFilePath :: String
     ,_colIndex :: Int
     ,_isEdit :: Bool
     ,_edit1 :: E.Editor String Name 
-    
+    ,_exitState :: ExitState
+    ,_learnError :: Int
+    ,_outboundMeanings :: Map.Map String String
+    ,_outboundKnowledge :: Map.Map String Int
+    ,_outboundOptions :: [String]
 }
 
 makeLenses ''AppState
@@ -155,7 +165,7 @@ drawUIB s = [ui]
                               , str " "
                               , hCenter $ str "Press +/- to add/remove list elements."
                               , hCenter $ str "Use arrow keys to change selection."
-                              , hCenter $ str "Press Esc to exit."
+                              , hCenter $ str "Press Esc to exit edit mode."
                               , str " "
                               , hCenter $ hLimit 30 $ vLimit 5 e1
                               ]
@@ -164,7 +174,13 @@ drawUIB s = [ui]
                               , hCenter $ str "Press +/- to add/remove list elements."
                               , hCenter $ str "Use arrow keys to change selection."
                               , hCenter $ str "Press Esc to exit."
+                              , hCenter $ str (learningMessage (s ^. learnError))
                               ]
+
+learningMessage :: Int -> String
+learningMessage status
+            | (status == 0) = ""
+            | otherwise = "Cannot start learning session: too few unknown cards (at least 5 unknown cards are needed)."
 
 handleEventB :: T.BrickEvent Name e -> T.EventM Name AppState ()
 handleEventB (VtyEvent e) =
@@ -253,13 +269,37 @@ handleEventB (VtyEvent e) =
                 else do
                     zoom edit1 $ E.handleEditorEvent (VtyEvent e)
 
+        -- if the user presses the key l, we start a learning session.
+        V.EvKey (V.KChar 'l') [] -> do
+            mean <- use meanings
+            know <- use knowledge
+            -- this list contains all the words with knowledge 0, i.e. words we have not learned yet.
+            let zeroValues = Map.keys $ Map.filter (== 0) know 
+            -- we check that there are at least 5 words we have not learned yet for the learning session
+            if (length zeroValues >= 5) 
+                then do
+                    let outboundValues = take 5 zeroValues -- take the 5 words we'll learn
+                    outboundMeanings %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) mean)
+                    outboundKnowledge %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) know)
+                    outboundOptions %= (\x -> Map.elems mean) 
+                    outss <- use outboundOptions
+                    -- we proceed with the start of the session
+                    exitState .= Learn1Opt
+                    M.halt
+                else do
+                    -- we display a message for the user, inviting him to add new words.
+                    learnError .= 1
+
+            
+
         V.EvKey V.KEsc [] -> do
             isEditing <- use isEdit
             if isEditing
                 then do 
                     isEdit %= (\x -> False)
                     edit1 %= (\x -> (E.editor Edit1 (Just 1) "")) 
-                else 
+                else do 
+                    exitState .= ExitOpt 
                     M.halt
 
         -- handle logic for when enter key is pressed
@@ -430,5 +470,12 @@ main = do
     
     --putStrLn $ "Selected entry: " <> show (FB.fileInfoFilename (head $ FB.fileBrowserSelection b) )
     let initialRows = mapToRows meaningMap knowledgeMap revisionMap
-    let state2 = AppState filePath contentFile meaningMap knowledgeMap revisionMap (L.list List1 (Vec.fromList initialRows) 1) 0 False (E.editor Edit1 (Just 1) "") 
-    void $ M.defaultMain appB state2 
+    let state2 = AppState filePath contentFile meaningMap knowledgeMap revisionMap (L.list List1 (Vec.fromList initialRows) 1) 0 False (E.editor Edit1 (Just 1) "") Learn1Opt 0 (Map.empty) (Map.empty) []
+    b2 <- M.defaultMain appB state2 
+    let firstKey = head (Map.keys (b2 ^. outboundMeanings))
+    random1 <- shuffle (b2 ^. outboundOptions)
+    let newRan1 = firstKey : random1 
+    randomizedFirstChoice <- shuffle newRan1 
+    b3 <- M.defaultMain appLearn $ St [] Nothing firstKey Presentation randomizedFirstChoice (b2 ^. outboundMeanings) (b2 ^. outboundKnowledge) [0,0,0,0] (enqueue firstKey emptyQueue) (Map.map (const 0) (b2 ^. outboundKnowledge)) (Map.map (const 0) (b2 ^. outboundKnowledge)) 0 0 (b2 ^. outboundOptions)  
+    print "ciao"
+
