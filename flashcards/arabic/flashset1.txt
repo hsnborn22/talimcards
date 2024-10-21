@@ -2,6 +2,5 @@ govorit',to speak
 hranit',to preserve
 menyat',to change
 meshat',to mix
-novy,new
+skazat',to say
 zashishat',to defend
-znat',to know

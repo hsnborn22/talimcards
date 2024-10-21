@@ -2,6 +2,5 @@ govorit',Nothing
 hranit',Nothing
 menyat',Nothing
 meshat',Nothing
-novy,Nothing
+skazat',Nothing
 zashishat',Nothing
-znat',Nothing

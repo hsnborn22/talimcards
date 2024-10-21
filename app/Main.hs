@@ -54,7 +54,7 @@ import qualified Brick.Types as T
 import qualified Brick.Widgets.Table as Table
 import qualified Data.Sequence as Seq
 import FlashMap (trim, trimQuotes, parseCommaPairs, parseDate, parseDates, writeCommaPairs, localTimeToString, convertDateMapToStrMap, writeDatePairs, parseKnowledgePairs, parseDatePairs, changeKey)
-import SpacedRep (appLearn, St(..), drawUi, aMap, Screen(..), emptyQueue, enqueue, dequeue) 
+import SpacedRep (appLearn, St(..), drawUi, aMap, Screen(..), emptyQueue, enqueue, dequeue, learnCompletion, introducedMap) 
 import RandomUtils (shuffle)
 
 
@@ -74,7 +74,7 @@ runApp app state = void $ M.defaultMain app state
 data Name = FileBrowser1 | Edit1 | List1 | Info | Button1 | Button2 | Button3 | Button4 | Prose | TextBox
           deriving (Eq, Show, Ord)
 
-data ExitState = ExitOpt | Learn1Opt | Learn2Opt | ReviewOpt 
+data ExitState = ExitOpt | Learn1Opt | Learn2Opt | MenuOpt | ReviewOpt 
           deriving (Eq, Show, Ord)
 
 data AppState = AppState {_currentFilePath :: String
@@ -444,7 +444,54 @@ theApp =
           , M.appAttrMap = const theMap
           }
 
+data AppType = TypeA AppState | TypeB St
 
+runSessionConditional :: AppType -> ExitState -> String -> IO ()
+runSessionConditional (TypeA b) switch filePath = case switch of 
+        Learn1Opt -> do
+            let firstKey = head (Map.keys (b ^. outboundMeanings))
+            random1 <- shuffle (b ^. outboundOptions)
+            let newRan1 = firstKey : random1 
+            randomizedFirstChoice <- shuffle newRan1 
+            b3 <- M.defaultMain appLearn $ St [] Nothing firstKey Presentation randomizedFirstChoice (b ^. outboundMeanings) (b ^. outboundKnowledge) [0,0,0,0] (enqueue firstKey emptyQueue) (Map.map (const 0) (b ^. outboundKnowledge)) (Map.map (const 0) (b ^. outboundKnowledge)) 0 0 (b ^. outboundOptions)  
+            runSessionConditional (TypeB b3) MenuOpt filePath
+        ExitOpt -> do
+            print "exit"
+        _ -> do
+            print "ciao ciao"
+            
+
+runSessionConditional (TypeB b) switch filePath = case switch of 
+        MenuOpt -> do
+            let comp = (b ^. learnCompletion)
+            let keysList = Map.keys (b ^. introducedMap) 
+            contentFile <- readFile filePath
+            let meaningMap = parseCommaPairs contentFile
+            let filePath2 = "flashcardsKnowledge/" ++ (intercalate "/" (reverse $ take 2 $ reverse $ splitOn "/" filePath ))
+            let filePath3 = "flashcardsRevision/" ++ (intercalate "/" (reverse $ take 2 $ reverse $ splitOn "/" filePath ))
+    
+            contentFile2 <- E.try (readFile' filePath2) :: IO (Either E.SomeException String)
+            let knowledgeMap = case contentFile2 of
+                      Left ex -> createMap (Map.keys meaningMap)
+                      Right actualContent -> parseKnowledgePairs actualContent meaningMap
+
+            contentFile3 <- E.try (readFile filePath3) :: IO (Either E.SomeException String)
+            let revisionMap = case contentFile3 of
+                      Left ex -> createMapNothing (Map.keys meaningMap)
+                      Right actualContent -> parseDatePairs actualContent meaningMap
+
+            let knowledgeMap2 = foldr (\key acc -> Map.adjust (+comp) key acc) knowledgeMap keysList 
+            liftIO $ writeCommaPairs (Map.map show knowledgeMap2) filePath2
+    
+            let initialRows = mapToRows meaningMap knowledgeMap revisionMap
+            let state2 = AppState filePath contentFile meaningMap knowledgeMap2 revisionMap (L.list List1 (Vec.fromList initialRows) 1) 0 False (E.editor Edit1 (Just 1) "") Learn1Opt 0 (Map.empty) (Map.empty) []
+            b2 <- M.defaultMain appB state2 
+            runSessionConditional (TypeA b2) (b2 ^. exitState) filePath
+
+        ExitOpt -> do
+            print "exit"
+        _ -> do
+            print "ciao ciao"
 
 main :: IO ()
 main = do
@@ -472,10 +519,7 @@ main = do
     let initialRows = mapToRows meaningMap knowledgeMap revisionMap
     let state2 = AppState filePath contentFile meaningMap knowledgeMap revisionMap (L.list List1 (Vec.fromList initialRows) 1) 0 False (E.editor Edit1 (Just 1) "") Learn1Opt 0 (Map.empty) (Map.empty) []
     b2 <- M.defaultMain appB state2 
-    let firstKey = head (Map.keys (b2 ^. outboundMeanings))
-    random1 <- shuffle (b2 ^. outboundOptions)
-    let newRan1 = firstKey : random1 
-    randomizedFirstChoice <- shuffle newRan1 
-    b3 <- M.defaultMain appLearn $ St [] Nothing firstKey Presentation randomizedFirstChoice (b2 ^. outboundMeanings) (b2 ^. outboundKnowledge) [0,0,0,0] (enqueue firstKey emptyQueue) (Map.map (const 0) (b2 ^. outboundKnowledge)) (Map.map (const 0) (b2 ^. outboundKnowledge)) 0 0 (b2 ^. outboundOptions)  
+    runSessionConditional (TypeA b2) (b2 ^. exitState)  filePath
+
     print "ciao"
 
