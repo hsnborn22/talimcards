@@ -534,13 +534,25 @@ runSessionConditional (TypeC b) switch filePath = case switch of
                       Left ex -> createMap (Map.keys meaningMap)
                       Right actualContent -> parseKnowledgePairs actualContent meaningMap
 
-            contentFile3 <- E.try (readFile filePath3) :: IO (Either E.SomeException String)
+            contentFile3 <- E.try (readFile' filePath3) :: IO (Either E.SomeException String)
             let revisionMap = case contentFile3 of
                       Left ex -> createMapNothing (Map.keys meaningMap)
                       Right actualContent -> parseDatePairs actualContent meaningMap
 
+            currentTimeUTC <- liftIO $ getCurrentTime
+    
+            -- Get the local time zone
+            timeZone <- liftIO $ getCurrentTimeZone
+    
+            -- Convert UTC time to LocalTime
+            let currentLocalTime = utcToLocalTime timeZone currentTimeUTC
             let knowledgeMap2 = foldr (\key acc -> Map.adjust (+comp) key acc) knowledgeMap keysList 
+            liftIO $ print currentLocalTime
+            let revisionMap2 = foldr (\key acc -> Map.insert key (Just (addLocalTime (secondsToNominalDiffTime 86400)  currentLocalTime)) acc 
+                    ) revisionMap keysList
             liftIO $ writeCommaPairs (Map.map show knowledgeMap2) filePath2
+            liftIO $ print (Map.elems revisionMap2)
+            liftIO $ writeDatePairs revisionMap2 filePath3
     
             let initialRows = mapToRows meaningMap knowledgeMap revisionMap
             let state2 = AppState filePath contentFile meaningMap knowledgeMap2 revisionMap (L.list List1 (Vec.fromList initialRows) 1) 0 False (E.editor Edit1 (Just 1) "") Learn1Opt 0 (Map.empty) (Map.empty) []
