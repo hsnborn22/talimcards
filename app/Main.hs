@@ -56,6 +56,7 @@ import qualified Data.Sequence as Seq
 import FlashMap (trim, trimQuotes, parseCommaPairs, parseDate, parseDates, writeCommaPairs, localTimeToString, convertDateMapToStrMap, writeDatePairs, parseKnowledgePairs, parseDatePairs, changeKey)
 import SpacedRep (appLearn, St(..), drawUi, aMap, Screen(..), emptyQueue, enqueue, dequeue, learnCompletion, introducedMap) 
 import qualified SpacedRep2 as SRS 
+import qualified Revision as REV
 import RandomUtils (shuffle)
 
 createMap :: (Ord k) => [k] -> Map.Map k Int
@@ -310,6 +311,26 @@ handleEventB (VtyEvent e) =
                     -- we display a message for the user, inviting him to add new words.
                     learnError .= 1
 
+        V.EvKey (V.KChar 'r') [] -> do
+            mean <- use meanings
+            know <- use knowledge
+            -- this list contains all the words with knowledge 2, i.e. words we have learned.
+            let twoValues = Map.keys $ Map.filter (== 2) know 
+            -- we check that there is at least 1 such word to revise
+            if (length twoValues >= 1) 
+                then do
+                    let outboundValues = take 10 twoValues -- take at most 10 words  to revise
+                    outboundMeanings %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) mean)
+                    outboundKnowledge %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) know)
+                    outboundOptions %= (\x -> Map.elems mean) 
+                    outss <- use outboundOptions
+                    -- we proceed with the start of the session
+                    exitState .= ReviewOpt
+                    M.halt
+                else do
+                    -- we display a message for the user, inviting him to add new words.
+                    learnError .= 1
+
 
         V.EvKey V.KEsc [] -> do
             isEditing <- use isEdit
@@ -463,7 +484,7 @@ theApp =
           , M.appAttrMap = const theMap
           }
 
-data AppType = TypeA AppState | TypeB St | TypeC SRS.St2
+data AppType = TypeA AppState | TypeB St | TypeC SRS.St2 | TypeD REV.St3
 
 runSessionConditional :: AppType -> ExitState -> String -> IO ()
 runSessionConditional (TypeA b) switch filePath = case switch of 
@@ -481,6 +502,12 @@ runSessionConditional (TypeA b) switch filePath = case switch of
             randomizedFirstChoice <- shuffle newRan1 
             b3 <- M.defaultMain SRS.appLearn2 $ SRS.St2 [] Nothing firstKey SRS.TextInput randomizedFirstChoice (b ^. outboundMeanings) (b ^. outboundKnowledge) [0,0,0,0] (Map.keys (b ^. outboundMeanings)) (Map.map (const 0) (b ^. outboundKnowledge)) (Map.map (const 0) (b ^. outboundKnowledge)) 0 0 (b ^. outboundOptions) (E.editor SRS.Edit2 (Just 1) "") 2  
             runSessionConditional (TypeC b3) MenuOpt filePath
+        ReviewOpt -> do
+            
+            let firstKey = head (Map.keys (b ^. outboundMeanings))
+            b3 <- M.defaultMain REV.appRevision $ REV.St3 [] Nothing firstKey REV.TextInput (b ^. outboundMeanings) (b ^. outboundKnowledge) (Map.keys (b ^. outboundMeanings)) (Map.map (const 0) (b ^. outboundKnowledge))  0 (E.editor REV.Edit2 (Just 1) "") 2 (Map.map (const 0) (b ^. outboundKnowledge) ) 
+            runSessionConditional (TypeD b3) MenuOpt filePath
+
         ExitOpt -> do
             print "exit"
         _ -> do
@@ -564,6 +591,45 @@ runSessionConditional (TypeC b) switch filePath = case switch of
         _ -> do
             print "ciao ciao"
 
+runSessionConditional (TypeD b) switch filePath = case switch of 
+        MenuOpt -> do
+            let comp = (b ^. REV.learnCompletion)
+            let keysList = Map.keys (b ^. REV.levelMapTempText) 
+            contentFile <- readFile filePath
+            let meaningMap = parseCommaPairs contentFile
+            let filePath2 = "flashcardsKnowledge/" ++ (intercalate "/" (reverse $ take 2 $ reverse $ splitOn "/" filePath ))
+            let filePath3 = "flashcardsRevision/" ++ (intercalate "/" (reverse $ take 2 $ reverse $ splitOn "/" filePath ))
+    
+            contentFile2 <- E.try (readFile filePath2) :: IO (Either E.SomeException String)
+            let knowledgeMap = case contentFile2 of
+                      Left ex -> createMap (Map.keys meaningMap)
+                      Right actualContent -> parseKnowledgePairs actualContent meaningMap
+
+            contentFile3 <- E.try (readFile' filePath3) :: IO (Either E.SomeException String)
+            let revisionMap = case contentFile3 of
+                      Left ex -> createMapNothing (Map.keys meaningMap)
+                      Right actualContent -> parseDatePairs actualContent meaningMap
+
+            currentTimeUTC <- liftIO $ getCurrentTime
+    
+            -- Get the local time zone
+            timeZone <- liftIO $ getCurrentTimeZone
+    
+            -- Convert UTC time to LocalTime
+            let currentLocalTime = utcToLocalTime timeZone currentTimeUTC
+            let revisionMap2 = foldr (\key acc -> Map.insert key (Just (addLocalTime (secondsToNominalDiffTime 86400)  currentLocalTime)) acc 
+                    ) revisionMap keysList
+            liftIO $ writeDatePairs revisionMap2 filePath3
+    
+            let initialRows = mapToRows meaningMap knowledgeMap revisionMap
+            let state2 = AppState filePath contentFile meaningMap knowledgeMap revisionMap (L.list List1 (Vec.fromList initialRows) 1) 0 False (E.editor Edit1 (Just 1) "") Learn1Opt 0 (Map.empty) (Map.empty) []
+            b2 <- M.defaultMain appB state2 
+            runSessionConditional (TypeA b2) (b2 ^. exitState) filePath
+
+        ExitOpt -> do
+            print "exit"
+        _ -> do
+            print "ciao ciao"
 
 main :: IO ()
 main = do
