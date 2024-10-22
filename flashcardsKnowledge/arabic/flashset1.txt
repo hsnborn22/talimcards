@@ -1,6 +1,6 @@
-govorit',1
-hranit',1
-menyat',1
-meshat',1
-skazat',1
+govorit',2
+hranit',2
+menyat',2
+meshat',2
+skazat',2
 zashishat',0

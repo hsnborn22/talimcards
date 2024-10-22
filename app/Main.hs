@@ -55,8 +55,8 @@ import qualified Brick.Widgets.Table as Table
 import qualified Data.Sequence as Seq
 import FlashMap (trim, trimQuotes, parseCommaPairs, parseDate, parseDates, writeCommaPairs, localTimeToString, convertDateMapToStrMap, writeDatePairs, parseKnowledgePairs, parseDatePairs, changeKey)
 import SpacedRep (appLearn, St(..), drawUi, aMap, Screen(..), emptyQueue, enqueue, dequeue, learnCompletion, introducedMap) 
+import qualified SpacedRep2 as SRS 
 import RandomUtils (shuffle)
-
 
 createMap :: (Ord k) => [k] -> Map.Map k Int
 createMap keys = Map.fromList [(key, 0) | key <- keys]
@@ -71,8 +71,7 @@ data Row = Row String String String String
 runApp :: M.App AppState String () -> AppState -> IO ()
 runApp app state = void $ M.defaultMain app state 
 
-data Name = FileBrowser1 | Edit1 | List1 | Info | Button1 | Button2 | Button3 | Button4 | Prose | TextBox
-          deriving (Eq, Show, Ord)
+data Name = FileBrowser1 | Edit1 | List1 | Info | Button1 | Button2 | Button3 | Button4 | Prose | TextBox deriving (Eq, Show, Ord)
 
 data ExitState = ExitOpt | Learn1Opt | Learn2Opt | MenuOpt | ReviewOpt 
           deriving (Eq, Show, Ord)
@@ -291,6 +290,26 @@ handleEventB (VtyEvent e) =
                     learnError .= 1
 
             
+        V.EvKey (V.KChar 'k') [] -> do
+            mean <- use meanings
+            know <- use knowledge
+            -- this list contains all the words with knowledge 0, i.e. words we have not learned yet.
+            let zeroValues = Map.keys $ Map.filter (== 1) know 
+            -- we check that there are at least 5 words we have not learned yet for the learning session
+            if (length zeroValues >= 5) 
+                then do
+                    let outboundValues = take 5 zeroValues -- take the 5 words we'll learn
+                    outboundMeanings %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) mean)
+                    outboundKnowledge %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) know)
+                    outboundOptions %= (\x -> Map.elems mean) 
+                    outss <- use outboundOptions
+                    -- we proceed with the start of the session
+                    exitState .= Learn2Opt
+                    M.halt
+                else do
+                    -- we display a message for the user, inviting him to add new words.
+                    learnError .= 1
+
 
         V.EvKey V.KEsc [] -> do
             isEditing <- use isEdit
@@ -444,7 +463,7 @@ theApp =
           , M.appAttrMap = const theMap
           }
 
-data AppType = TypeA AppState | TypeB St
+data AppType = TypeA AppState | TypeB St | TypeC SRS.St2
 
 runSessionConditional :: AppType -> ExitState -> String -> IO ()
 runSessionConditional (TypeA b) switch filePath = case switch of 
@@ -455,6 +474,13 @@ runSessionConditional (TypeA b) switch filePath = case switch of
             randomizedFirstChoice <- shuffle newRan1 
             b3 <- M.defaultMain appLearn $ St [] Nothing firstKey Presentation randomizedFirstChoice (b ^. outboundMeanings) (b ^. outboundKnowledge) [0,0,0,0] (enqueue firstKey emptyQueue) (Map.map (const 0) (b ^. outboundKnowledge)) (Map.map (const 0) (b ^. outboundKnowledge)) 0 0 (b ^. outboundOptions)  
             runSessionConditional (TypeB b3) MenuOpt filePath
+        Learn2Opt -> do
+            let firstKey = head (Map.keys (b ^. outboundMeanings))
+            random1 <- shuffle (b ^. outboundOptions)
+            let newRan1 = firstKey : random1 
+            randomizedFirstChoice <- shuffle newRan1 
+            b3 <- M.defaultMain SRS.appLearn2 $ SRS.St2 [] Nothing firstKey SRS.TextInput randomizedFirstChoice (b ^. outboundMeanings) (b ^. outboundKnowledge) [0,0,0,0] (Map.keys (b ^. outboundMeanings)) (Map.map (const 0) (b ^. outboundKnowledge)) (Map.map (const 0) (b ^. outboundKnowledge)) 0 0 (b ^. outboundOptions) (E.editor SRS.Edit2 (Just 1) "") 2  
+            runSessionConditional (TypeC b3) MenuOpt filePath
         ExitOpt -> do
             print "exit"
         _ -> do
@@ -492,6 +518,40 @@ runSessionConditional (TypeB b) switch filePath = case switch of
             print "exit"
         _ -> do
             print "ciao ciao"
+
+
+runSessionConditional (TypeC b) switch filePath = case switch of 
+        MenuOpt -> do
+            let comp = (b ^. SRS.learnCompletion)
+            let keysList = Map.keys (b ^. SRS.levelMapTempText) 
+            contentFile <- readFile filePath
+            let meaningMap = parseCommaPairs contentFile
+            let filePath2 = "flashcardsKnowledge/" ++ (intercalate "/" (reverse $ take 2 $ reverse $ splitOn "/" filePath ))
+            let filePath3 = "flashcardsRevision/" ++ (intercalate "/" (reverse $ take 2 $ reverse $ splitOn "/" filePath ))
+    
+            contentFile2 <- E.try (readFile' filePath2) :: IO (Either E.SomeException String)
+            let knowledgeMap = case contentFile2 of
+                      Left ex -> createMap (Map.keys meaningMap)
+                      Right actualContent -> parseKnowledgePairs actualContent meaningMap
+
+            contentFile3 <- E.try (readFile filePath3) :: IO (Either E.SomeException String)
+            let revisionMap = case contentFile3 of
+                      Left ex -> createMapNothing (Map.keys meaningMap)
+                      Right actualContent -> parseDatePairs actualContent meaningMap
+
+            let knowledgeMap2 = foldr (\key acc -> Map.adjust (+comp) key acc) knowledgeMap keysList 
+            liftIO $ writeCommaPairs (Map.map show knowledgeMap2) filePath2
+    
+            let initialRows = mapToRows meaningMap knowledgeMap revisionMap
+            let state2 = AppState filePath contentFile meaningMap knowledgeMap2 revisionMap (L.list List1 (Vec.fromList initialRows) 1) 0 False (E.editor Edit1 (Just 1) "") Learn1Opt 0 (Map.empty) (Map.empty) []
+            b2 <- M.defaultMain appB state2 
+            runSessionConditional (TypeA b2) (b2 ^. exitState) filePath
+
+        ExitOpt -> do
+            print "exit"
+        _ -> do
+            print "ciao ciao"
+
 
 main :: IO ()
 main = do
