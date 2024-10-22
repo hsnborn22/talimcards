@@ -47,6 +47,7 @@ import Brick.Widgets.Core
 import Debug.Trace (trace)
 import qualified Brick.Widgets.FileBrowser as FB
 import qualified Brick.AttrMap as A
+import Data.Fixed (Pico)
 import Data.Time
 import Data.Time.Format (defaultTimeLocale)
 import Brick.Util (on, fg)
@@ -616,9 +617,22 @@ runSessionConditional (TypeD b) switch filePath = case switch of
             timeZone <- liftIO $ getCurrentTimeZone
     
             -- Convert UTC time to LocalTime
+            let secondstoadd = 86400 * comp
             let currentLocalTime = utcToLocalTime timeZone currentTimeUTC
-            let revisionMap2 = foldr (\key acc -> Map.insert key (Just (addLocalTime (secondsToNominalDiffTime 86400)  currentLocalTime)) acc 
-                    ) revisionMap keysList
+            let revisionMap2 = foldr (\key acc -> 
+                            case Map.lookup key acc of
+                              Just (Just existingTime) -> 
+                                -- If the next revision time for the word in question has already passed (i.e. smaller than today)
+                                -- then we add new time to the revision time
+                                if existingTime < currentLocalTime 
+                                    then 
+                                        Map.insert key (Just (addLocalTime (secondsToNominalDiffTime (fromIntegral secondstoadd)) existingTime)) acc
+                                    else 
+                                        acc
+                                    
+                              _ -> acc  -- This handles both Nothing and Just Nothing cases
+                          ) revisionMap keysList
+
             liftIO $ writeDatePairs revisionMap2 filePath3
     
             let initialRows = mapToRows meaningMap knowledgeMap revisionMap
