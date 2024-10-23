@@ -272,65 +272,80 @@ handleEventB (VtyEvent e) =
 
         -- if the user presses the key l, we start a learning session.
         V.EvKey (V.KChar 'l') [] -> do
-            mean <- use meanings
-            know <- use knowledge
-            -- this list contains all the words with knowledge 0, i.e. words we have not learned yet.
-            let zeroValues = Map.keys $ Map.filter (== 0) know 
-            -- we check that there are at least 5 words we have not learned yet for the learning session
-            if (length zeroValues >= 5) 
+            isEditing <- use isEdit
+            if not isEditing
                 then do
-                    let outboundValues = take 5 zeroValues -- take the 5 words we'll learn
-                    outboundMeanings %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) mean)
-                    outboundKnowledge %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) know)
-                    outboundOptions %= (\x -> Map.elems mean) 
-                    outss <- use outboundOptions
-                    -- we proceed with the start of the session
-                    exitState .= Learn1Opt
-                    M.halt
-                else do
-                    -- we display a message for the user, inviting him to add new words.
-                    learnError .= 1
+                    mean <- use meanings
+                    know <- use knowledge
+                    -- this list contains all the words with knowledge 0, i.e. words we have not learned yet.
+                    let zeroValues = Map.keys $ Map.filter (== 0) know 
+                    -- we check that there are at least 5 words we have not learned yet for the learning session
+                    if (length zeroValues >= 5) 
+                        then do
+                            let outboundValues = take 5 zeroValues -- take the 5 words we'll learn
+                            outboundMeanings %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) mean)
+                            outboundKnowledge %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) know)
+                            outboundOptions %= (\x -> Map.elems mean) 
+                            outss <- use outboundOptions
+                            -- we proceed with the start of the session
+                            exitState .= Learn1Opt
+                            M.halt
+                        else do
+                            -- we display a message for the user, inviting him to add new words.
+                            learnError .= 1
+                    else do
+                        zoom edit1 $ E.handleEditorEvent (VtyEvent e)
 
             
         V.EvKey (V.KChar 'k') [] -> do
-            mean <- use meanings
-            know <- use knowledge
-            -- this list contains all the words with knowledge 0, i.e. words we have not learned yet.
-            let zeroValues = Map.keys $ Map.filter (== 1) know 
-            -- we check that there are at least 5 words we have not learned yet for the learning session
-            if (length zeroValues >= 5) 
+            isEditing <- use isEdit
+            if not isEditing
                 then do
-                    let outboundValues = take 5 zeroValues -- take the 5 words we'll learn
-                    outboundMeanings %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) mean)
-                    outboundKnowledge %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) know)
-                    outboundOptions %= (\x -> Map.elems mean) 
-                    outss <- use outboundOptions
-                    -- we proceed with the start of the session
-                    exitState .= Learn2Opt
-                    M.halt
-                else do
-                    -- we display a message for the user, inviting him to add new words.
-                    learnError .= 1
+                    mean <- use meanings
+                    know <- use knowledge
+                    -- this list contains all the words with knowledge 0, i.e. words we have not learned yet.
+                    let zeroValues = Map.keys $ Map.filter (== 1) know 
+                   -- we check that there are at least 5 words we have not learned yet for the learning session
+                    if (length zeroValues >= 5) 
+                        then do
+                            let outboundValues = take 5 zeroValues -- take the 5 words we'll learn
+                            outboundMeanings %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) mean)
+                            outboundKnowledge %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) know)
+                            outboundOptions %= (\x -> Map.elems mean) 
+                            outss <- use outboundOptions
+                            -- we proceed with the start of the session
+                            exitState .= Learn2Opt
+                            M.halt
+                        else do
+                            -- we display a message for the user, inviting him to add new words.
+                            learnError .= 1
+                  else do
+                      zoom edit1 $ E.handleEditorEvent (VtyEvent e)
 
         V.EvKey (V.KChar 'r') [] -> do
-            mean <- use meanings
-            know <- use knowledge
-            -- this list contains all the words with knowledge 2, i.e. words we have learned.
-            let twoValues = Map.keys $ Map.filter (== 2) know 
-            -- we check that there is at least 1 such word to revise
-            if (length twoValues >= 1) 
+            isEditing <- use isEdit
+            if not isEditing
                 then do
-                    let outboundValues = take 10 twoValues -- take at most 10 words  to revise
-                    outboundMeanings %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) mean)
-                    outboundKnowledge %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) know)
-                    outboundOptions %= (\x -> Map.elems mean) 
-                    outss <- use outboundOptions
-                    -- we proceed with the start of the session
-                    exitState .= ReviewOpt
-                    M.halt
-                else do
-                    -- we display a message for the user, inviting him to add new words.
-                    learnError .= 1
+                    mean <- use meanings
+                    know <- use knowledge
+                    -- this list contains all the words with knowledge 2, i.e. words we have learned.
+                    let twoValues = Map.keys $ Map.filter (== 2) know 
+                    -- we check that there is at least 1 such word to revise
+                    if (length twoValues >= 1) 
+                        then do
+                            let outboundValues = take 10 twoValues -- take at most 10 words  to revise
+                            outboundMeanings %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) mean)
+                            outboundKnowledge %= (\x ->  Map.filterWithKey (\k _ -> k `elem` outboundValues) know)
+                            outboundOptions %= (\x -> Map.elems mean) 
+                            outss <- use outboundOptions
+                            -- we proceed with the start of the session
+                            exitState .= ReviewOpt
+                            M.halt
+                        else do
+                            -- we display a message for the user, inviting him to add new words.
+                            learnError .= 1
+                  else do
+                      zoom edit1 $ E.handleEditorEvent (VtyEvent e)
 
 
         V.EvKey V.KEsc [] -> do
