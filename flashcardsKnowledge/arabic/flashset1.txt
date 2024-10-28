@@ -1,6 +1,10 @@
-govorit',2
+hovorit',2
 hranit',2
 menyat',2
 meshat',2
+molitsya,0
+puteshestvovat',0
 skazat',2
 zashishat',0
+zhit',0
+znat',0

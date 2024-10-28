@@ -102,7 +102,7 @@ drawUI b = [center $ ui <=> help]
         ui = hCenter $
              vLimit 15 $
              hLimit 50 $
-             borderWithLabel (txt "Choose a file") $
+             borderWithLabel (txt "Choose a flashcard set") $
              FB.renderFileBrowser True b
         help = padTop (Pad 1) $
                vBox [ case FB.fileBrowserException b of
@@ -662,7 +662,7 @@ runSessionConditional (TypeD b) switch filePath = case switch of
 
 main :: IO ()
 main = do
-    b <- M.defaultMain theApp =<< FB.newFileBrowser FB.selectNonDirectories FileBrowser1 Nothing
+    b <- M.defaultMain theApp =<< FB.newFileBrowser FB.selectNonDirectories FileBrowser1 (Just "flashcards")
     putStrLn $ "Selected entry: " <> show (FB.fileBrowserSelection b)
     let fileName = FB.fileInfoFilename (head $ FB.fileBrowserSelection b)
     let filePath = FB.fileInfoFilePath (head $ FB.fileBrowserSelection b)

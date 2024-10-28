@@ -1,6 +1,10 @@
-govorit',to speak
+hovorit',to speak
 hranit',to preserve
 menyat',to change
 meshat',to mix
+molitsya,to pray
+puteshestvovat',to travel
 skazat',to say
 zashishat',to defend
+zhit',to live
+znat',to know

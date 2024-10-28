@@ -1,6 +1,10 @@
-govorit',2024-10-21 21:47
+hovorit',2024-10-21 21:47
 hranit',2024-10-21 21:47
 menyat',2024-10-21 21:47
 meshat',2024-10-21 21:47
+molitsya,Nothing
+puteshestvovat',Nothing
 skazat',2024-10-21 21:47
 zashishat',Nothing
+zhit',Nothing
+znat',Nothing
