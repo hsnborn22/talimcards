@@ -2,9 +2,9 @@ hovorit',2024-10-29 21:37
 hranit',2024-10-29 21:37
 menyat',2024-10-29 21:37
 meshat',2024-10-29 21:37
-molitsya,Nothing
-puteshestvovat',Nothing
+molitsya,2024-10-29 22:49
+puteshestvovat',2024-10-29 22:49
 skazat',2024-10-29 21:37
-zashishat',Nothing
-zhit',Nothing
-znat',Nothing
+zashishat',2024-10-29 22:49
+zhit',2024-10-29 22:49
+znat',2024-10-29 22:49

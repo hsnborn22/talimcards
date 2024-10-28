@@ -529,7 +529,7 @@ runSessionConditional (TypeA b) switch filePath = case switch of
         ReviewOpt -> do
             
             let firstKey = head (Map.keys (b ^. outboundMeanings))
-            b3 <- M.defaultMain REV.appRevision $ REV.St3 [] Nothing firstKey REV.TextInput (b ^. outboundMeanings) (b ^. outboundKnowledge) (Map.keys (b ^. outboundMeanings)) (Map.map (const 0) (b ^. outboundKnowledge))  0 (E.editor REV.Edit2 (Just 1) "") 2 (Map.map (const 0) (b ^. outboundKnowledge) ) 
+            b3 <- M.defaultMain REV.appRevision $ REV.St3 [] Nothing firstKey REV.TextInput (b ^. outboundMeanings) (b ^. outboundKnowledge) (Map.keys (b ^. outboundMeanings)) (Map.map (const 0) (b ^. outboundKnowledge))  0 (E.editor REV.Edit2 (Just 1) "") 2 (Map.map (const 0) (b ^. outboundKnowledge) )
             runSessionConditional (TypeD b3) MenuOpt filePath
 
         ExitOpt -> do
