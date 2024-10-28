@@ -1,5 +1,5 @@
 {-# LANGUAGE TemplateHaskell #-}
-module FlashMap (trim, trimQuotes, parseCommaPairs, parseDate, parseDates, writeCommaPairs, localTimeToString, convertDateMapToStrMap, writeDatePairs, parseKnowledgePairs, parseDatePairs, changeKey) where
+module FlashMap (trim, trimQuotes, parseCommaPairs, parseDate, parseDates, writeCommaPairs, localTimeToString, convertDateMapToStrMap, writeDatePairs, parseKnowledgePairs, parseDatePairs, changeKey, localTimeToString2) where
 
 import Lens.Micro ((^.))
 import Lens.Micro.Mtl
@@ -46,6 +46,11 @@ writeCommaPairs m fName = do
 localTimeToString :: Maybe LocalTime -> String
 localTimeToString Nothing = "Nothing"
 localTimeToString (Just localTime) = trimQuotes (formatTime defaultTimeLocale "%Y-%m-%d %H:%M" localTime)
+
+
+localTimeToString2 :: Maybe LocalTime -> String
+localTimeToString2 Nothing = "Nothing"
+localTimeToString2 (Just localTime) = trimQuotes (formatTime defaultTimeLocale "%Y-%m-%d" localTime)
 
 convertDateMapToStrMap :: Map.Map String (Maybe LocalTime) -> Map.Map String String
 convertDateMapToStrMap m = Map.map localTimeToString m

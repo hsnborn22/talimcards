@@ -54,7 +54,7 @@ import Brick.Util (on, fg)
 import qualified Brick.Types as T
 import qualified Brick.Widgets.Table as Table
 import qualified Data.Sequence as Seq
-import FlashMap (trim, trimQuotes, parseCommaPairs, parseDate, parseDates, writeCommaPairs, localTimeToString, convertDateMapToStrMap, writeDatePairs, parseKnowledgePairs, parseDatePairs, changeKey)
+import FlashMap (trim, trimQuotes, parseCommaPairs, parseDate, parseDates, writeCommaPairs, localTimeToString, convertDateMapToStrMap, writeDatePairs, parseKnowledgePairs, parseDatePairs, changeKey, localTimeToString2)
 import SpacedRep (appLearn, St(..), drawUi, aMap, Screen(..), emptyQueue, enqueue, dequeue, learnCompletion, introducedMap) 
 import qualified SpacedRep2 as SRS 
 import qualified Revision as REV
@@ -460,11 +460,19 @@ theMapB = A.attrMap V.defAttr
 columnWidths :: [Int]
 columnWidths = [20, 15, 20, 15]
 
+errorDate :: LocalTime
+errorDate = LocalTime (fromGregorian 1970 1 1) (TimeOfDay 0 0 0)
+
+convertDateToReadable :: LocalTime -> String
+convertDateToReadable t
+                  | (t == errorDate) = "Not learned"
+                  | otherwise = localTimeToString2 (Just t) 
+
 totalWidth :: Int
 totalWidth = sum columnWidths
 
 mapToRows :: Map.Map String String -> Map.Map String Int -> Map.Map String (Maybe LocalTime) -> [Row]
-mapToRows m m2 m3 = [Row key value (show $ fromMaybe 0 value2) (show $ fromMaybe Nothing  value3) | (key, value) <- Map.toList m , let value2 = Map.lookup key m2, let value3 = Map.lookup key m3]  -- "default" is a placeholder
+mapToRows m m2 m3 = [Row key value (show $ fromMaybe 0 value2) (convertDateToReadable $ fromMaybe errorDate $ fromMaybe Nothing value3) | (key, value) <- Map.toList m , let value2 = Map.lookup key m2, let value3 = Map.lookup key m3]  -- "default" is a placeholder
 
 headerRow :: Row
 headerRow = Row "Target language:" "Translation:" "Knowledge level:" "Next revision:"
@@ -552,7 +560,7 @@ runSessionConditional (TypeB b) switch filePath = case switch of
             let knowledgeMap2 = foldr (\key acc -> Map.adjust (+comp) key acc) knowledgeMap keysList 
             liftIO $ writeCommaPairs (Map.map show knowledgeMap2) filePath2
     
-            let initialRows = mapToRows meaningMap knowledgeMap revisionMap
+            let initialRows = mapToRows meaningMap knowledgeMap2 revisionMap
             let state2 = AppState filePath contentFile meaningMap knowledgeMap2 revisionMap (L.list List1 (Vec.fromList initialRows) 1) 0 False (E.editor Edit1 (Just 1) "") Learn1Opt 0 (Map.empty) (Map.empty) []
             b2 <- M.defaultMain appB state2 
             runSessionConditional (TypeA b2) (b2 ^. exitState) filePath
@@ -597,7 +605,7 @@ runSessionConditional (TypeC b) switch filePath = case switch of
             liftIO $ print (Map.elems revisionMap2)
             liftIO $ writeDatePairs revisionMap2 filePath3
     
-            let initialRows = mapToRows meaningMap knowledgeMap revisionMap
+            let initialRows = mapToRows meaningMap knowledgeMap2 revisionMap
             let state2 = AppState filePath contentFile meaningMap knowledgeMap2 revisionMap (L.list List1 (Vec.fromList initialRows) 1) 0 False (E.editor Edit1 (Just 1) "") Learn1Opt 0 (Map.empty) (Map.empty) []
             b2 <- M.defaultMain appB state2 
             runSessionConditional (TypeA b2) (b2 ^. exitState) filePath
@@ -641,7 +649,7 @@ runSessionConditional (TypeD b) switch filePath = case switch of
                                 -- then we add new time to the revision time
                                 if existingTime < currentLocalTime 
                                     then 
-                                        Map.insert key (Just (addLocalTime (secondsToNominalDiffTime (fromIntegral secondstoadd)) existingTime)) acc
+                                        Map.insert key (Just (addLocalTime (secondsToNominalDiffTime (fromIntegral secondstoadd)) currentLocalTime)) acc
                                     else 
                                         acc
                                     
@@ -650,7 +658,7 @@ runSessionConditional (TypeD b) switch filePath = case switch of
 
             liftIO $ writeDatePairs revisionMap2 filePath3
     
-            let initialRows = mapToRows meaningMap knowledgeMap revisionMap
+            let initialRows = mapToRows meaningMap knowledgeMap revisionMap2
             let state2 = AppState filePath contentFile meaningMap knowledgeMap revisionMap (L.list List1 (Vec.fromList initialRows) 1) 0 False (E.editor Edit1 (Just 1) "") Learn1Opt 0 (Map.empty) (Map.empty) []
             b2 <- M.defaultMain appB state2 
             runSessionConditional (TypeA b2) (b2 ^. exitState) filePath
