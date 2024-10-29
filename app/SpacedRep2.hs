@@ -15,7 +15,8 @@ import Data.Monoid ((<>))
 import qualified Graphics.Vty as V
 
 import qualified Brick.Types as T
-import Brick.AttrMap
+import Brick.AttrMap as A
+import qualified Brick.Widgets.ProgressBar as P
 import Brick.Util
 import Brick.Types (Widget, ViewportType(Vertical))
 import qualified Brick.Main as M
@@ -23,11 +24,11 @@ import qualified Data.Text.Zipper as TextZipper
 import qualified Brick.Widgets.Edit as E
 import qualified Brick.Widgets.Center as C
 import qualified Brick.Widgets.Border as B
-import Brick.Widgets.Core (translateBy, clickable, viewport, hLimit, hBox, padBottom ,padTopBottom, padTop, padLeftRight, str, vLimit, txt, withDefAttr, emptyWidget, Padding(..), vBox, (<=>))
+import Brick.Widgets.Core (translateBy, clickable, viewport, hLimit, hBox, padBottom ,padTopBottom, padTop, padLeftRight, str, vLimit, txt, withDefAttr, emptyWidget, Padding(..), vBox, strWrap, updateAttrMap, overrideAttr , (<=>))
 import qualified Data.Map as Map
 import qualified Data.Sequence as Seq
 import System.Random (randomRIO)
-import RandomUtils (shuffle)
+import RandomUtils (shuffle, getCompletionRate)
 
 removeElement :: Eq a => a -> [a] -> [a]
 removeElement x xs = [y | y <- xs, y /= x]
@@ -87,7 +88,6 @@ drawUi :: St2 -> [Widget Name2]
 drawUi st =
     [ buttonLayer st
     , proseLayer st
-    , infoLayer st
     ]
 
 attrFunction :: Int -> AttrName
@@ -120,11 +120,15 @@ buttonLayer st
     | (st ^. currentScreen == MultiChoice || st ^. currentScreen == Feedback) = C.vCenterLayer $
           C.hCenterLayer (padBottom (Pad 1) $ str "Click a button:") <=>
           C.hCenterLayer (hBox $ padLeftRight 1 <$> buttons) <=>
-          C.hCenterLayer (padTopBottom 1 $ str "Or enter text and then click in this editor:")
+          C.hCenterLayer (padTopBottom 1 $ str "Or enter text and then click in this editor:") <=>
+          C.hCenterLayer cBar 
     | (st ^. currentScreen == TextInput || st ^. currentScreen == Feedback2) = C.vCenterLayer $ C.hCenter $ hLimit 60 $ vLimit 5 $ e1 <=>
-                                                                  C.hCenterLayer (padTopBottom 1 $ str $ calculateDisplayString (st ^. textInputCorrect) (st ^. prose) (st ^. meanings) )
+                                                                  C.hCenterLayer (padTopBottom 1 $ str $ calculateDisplayString (st ^. textInputCorrect) (st ^. prose) (st ^. meanings) ) <=>
+                                                                  C.hCenterLayer cBar 
     | otherwise = C.vCenterLayer $ C.hCenterLayer (padBottom (Pad 1) $ str mnVal ) 
     where
+          cBar = overrideAttr P.progressCompleteAttr cDoneAttr1 $ overrideAttr P.progressIncompleteAttr cToDoAttr1 $ bar' '▰' '▱' $ (getCompletionRate (st ^. levelMapTempText) (st ^. levelMapTemp)) 
+          bar' cc ic v = P.customProgressBar cc ic Nothing v
           e1 = withDefAttr (attrFunction2 (st ^. textInputCorrect ) ) $ (E.renderEditor (str . unlines) True (st ^. edit2))          -- e1 = (E.renderEditor (str . unlines) True (st ^. edit2))
           buttons = mkButton <$> buttonData
           buttonData = [ (Button1, (st^.currentChoices) !! 0, attrFunction ((st^. buttonTrue) !! 0))
@@ -154,19 +158,6 @@ proseLayer st =
   viewport Prose Vertical $
   vLimit 8 $  -- Limit the height to 8
   vBox [ C.hCenter (str line) | line <- lines (st^.prose) ]
-
-infoLayer :: St2 -> Widget Name2
-infoLayer st = T.Widget T.Fixed T.Fixed $ do
-    c <- T.getContext
-    let h = c^.T.availHeightL
-        msg = case st^.lastReportedClick of
-                Nothing ->
-                    "Click and hold/drag to report a mouse click"
-                Just (name, T.Location l) ->
-                    "Mouse down at " <> show name <> " @ " <> show l
-    T.render $ translateBy (T.Location (0, h-1)) $ clickable Info $
-               withDefAttr (attrName "info") $
-              C.hCenter $ str msg
 
 appEventQuiz :: T.BrickEvent Name2 e -> T.EventM Name2 St2 ()
 appEventQuiz ev@(T.MouseDown n _ _ loc) = do
@@ -444,6 +435,11 @@ selectNextWord q m1 m2 s
             commonLevel = Map.foldr (\v acc -> if v == 1 then acc + 1 else acc) 0 m2
             valueSer = findFirstKeyWithZero m2
 
+
+cDoneAttr1, cToDoAttr1 :: A.AttrName
+cDoneAttr1 = A.attrName "C1:done"
+cToDoAttr1 = A.attrName "C1:remaining"
+
 aMap :: AttrMap
 aMap = attrMap V.defAttr
     [ (attrName "info",      V.white `on` V.magenta)
@@ -451,6 +447,9 @@ aMap = attrMap V.defAttr
     , (attrName "buttonWrong",   V.white `on` V.red)
     , (attrName "buttonCorrect",   V.black `on` V.green)
     , (attrName "standard", V.black `on` V.yellow)
+    , (cDoneAttr1,                fg V.blue)
+    , (cToDoAttr1,                fg V.brightWhite)
+    , (P.progressIncompleteAttr,  fg V.yellow)
     ]
 
 appLearn2 :: M.App St2 e Name2

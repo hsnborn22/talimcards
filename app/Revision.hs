@@ -70,14 +70,9 @@ attrFunction2 a
 calculateDisplayString :: Int -> String -> Map.Map String String -> String
 calculateDisplayString a key map = 
     case a of
-        0 -> "Wrong, the correct answer was: " ++ value
+        0 -> "Wrong, the correct answer was: " ++ key
         1 -> "Correct!"
         _ -> ""
-    where
-        value2 = Map.lookup key map
-        value = case value2 of 
-            Just v -> v
-            Nothing -> ""
 
 buttonLayer :: St3 -> Widget Name3
 buttonLayer st 
@@ -100,7 +95,12 @@ proseLayer st =
   vLimit 4 $
   viewport Prose Vertical $
   vLimit 8 $  -- Limit the height to 8
-  vBox [ C.hCenter (str line ) | line <- lines (st^.prose) ]
+  vBox [ C.hCenter (str line ) | line <- lines (wordOrLang) ]
+  where
+      word = Map.lookup (st^.prose) (st ^. meanings)
+      wordOrLang = case word of 
+          Just v -> v
+          Nothing -> ""
 
 appEvent (T.VtyEvent e) = 
     case e of 
@@ -119,7 +119,7 @@ appEvent (T.VtyEvent e) =
                           editorContent <- use (edit2 . E.editContentsL)
                           let userInput = head $ TextZipper.getText editorContent
 
-                          if userInput == strToComp
+                          if userInput == pros
                                 then do
                                     currentScreen .= Feedback2
                                     textInputCorrect %= (\x -> 1)
@@ -164,6 +164,8 @@ appEvent (T.VtyEvent e) =
                     else do
                         appEvent3 (T.VtyEvent e)
           _ -> return ()
+
+appEvent ev = return()
 
 appEvent3 (T.VtyEvent (V.EvKey V.KUp [V.MCtrl])) =
     M.vScrollBy (M.viewportScroll Prose) (-1)

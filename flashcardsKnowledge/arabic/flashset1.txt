@@ -2,9 +2,9 @@ hovorit',2
 hranit',2
 menyat',2
 meshat',2
-molitsya,1
-puteshestvovat',1
+molitsya,2
+puteshestvovat',2
 skazat',2
-zashishat',1
-zhit',1
-znat',1
+zashishat',2
+zhit',2
+znat',2

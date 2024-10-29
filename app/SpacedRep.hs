@@ -1,6 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE TemplateHaskell #-}
-module SpacedRep (enqueue, dequeue, removeValue, St(..), Screen(..), drawUi, attrFunction, buttonLayer, proseLayer, infoLayer, appEventQuiz, appEvent, isEmpty, hasValuesEqualTo, findFirstKeyWithZero, findAdequateKey, selectNextScreen, selectNextWord, aMap, appLearn, emptyQueue, introducedMap, learnCompletion) where
+module SpacedRep (enqueue, dequeue, removeValue, St(..), Screen(..), drawUi, attrFunction, buttonLayer, proseLayer, appEventQuiz, appEvent, isEmpty, hasValuesEqualTo, findFirstKeyWithZero, findAdequateKey, selectNextScreen, selectNextWord, aMap, appLearn, emptyQueue, introducedMap, learnCompletion) where
 
 import Lens.Micro ((^.))
 import Data.Maybe (listToMaybe)
@@ -84,7 +84,6 @@ drawUi :: St -> [Widget Name]
 drawUi st =
     [ buttonLayer st
     , proseLayer st
-    , infoLayer st
     ]
 
 attrFunction :: Int -> AttrName
@@ -130,19 +129,6 @@ proseLayer st =
   viewport Prose Vertical $
   vLimit 8 $  -- Limit the height to 8
   vBox [ C.hCenter (str line) | line <- lines (st^.prose) ]
-
-infoLayer :: St -> Widget Name
-infoLayer st = T.Widget T.Fixed T.Fixed $ do
-    c <- T.getContext
-    let h = c^.T.availHeightL
-        msg = case st^.lastReportedClick of
-                Nothing ->
-                    "Click and hold/drag to report a mouse click"
-                Just (name, T.Location l) ->
-                    "Mouse down at " <> show name <> " @ " <> show l
-    T.render $ translateBy (T.Location (0, h-1)) $ clickable Info $
-               withDefAttr (attrName "info") $
-              C.hCenter $ str msg
 
 appEventQuiz :: T.BrickEvent Name e -> T.EventM Name St ()
 appEventQuiz ev@(T.MouseDown n _ _ loc) = do
